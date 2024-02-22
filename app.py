@@ -10,7 +10,8 @@ import time
 import os
 
 pwd = os.path.dirname(os.path.realpath(__file__))
-request_url = "http://49.50.161.221:8000/"
+# request_url = "http://49.50.161.221:8000/"
+request_url = "http://localhost:8000/"
 
 def sketches2coordinates(all_layers):
     combined_image = np.zeros_like(resize512(all_layers[0]))
@@ -112,7 +113,7 @@ def get_result_with_retry(url, headers, get_result_body, max_retries=3, retry_in
     raise TimeoutError("Max retries exceeded")
 
 
-# Function 1 Outpainting
+# Function 1-1 Outpainting
 def outpaint(img_pil, mask_pil, checkbox, text):
     img_pil = resize512(img_pil)
     if img_pil.size != mask_pil.size:
@@ -124,7 +125,7 @@ def outpaint(img_pil, mask_pil, checkbox, text):
     headers = {'Content-Type': 'application/json'}
 
     request_id = hashlib.sha256(img_base64.encode()).hexdigest()
-    outpaint_body = {"image_b64":img_base64, "mask_b64":mask_base64, "text":text, "request_id":request_id}
+    outpaint_body = {"image_b64":img_base64, "mask_b64":mask_base64, "text":text, "request_id":request_id,"rate_of_change":1.0}
     response = requests.post(url, headers=headers, data=json.dumps({"body":outpaint_body}))
 
     url = request_url + "get_result/"
@@ -159,6 +160,92 @@ def outpaint(img_pil, mask_pil, checkbox, text):
 def switch_origin_product(img_a, img_b):
     return img_b, img_a
 
+# Function 1-2 Outpainting inpainting
+def outpaint_inpainting(img_pil, mask_pil, checkbox, text, rate_of_change):
+    img_pil = resize512(img_pil)
+    if img_pil.size != mask_pil.size:
+        mask_pil = mask_pil.resize(img_pil.size)
+    img_base64 = pil_to_bs64(img_pil)
+    mask_base64 = pil_to_bs64(mask_pil)
+
+    url = request_url + "diffusion/outpaint/inpainting/"
+    headers = {'Content-Type': 'application/json'}
+
+    request_id = hashlib.sha256(img_base64.encode()).hexdigest()
+    outpaint_body = {"image_b64":img_base64, "mask_b64":mask_base64, "text":text, "request_id":request_id, "rate_of_change":rate_of_change}
+    response = requests.post(url, headers=headers, data=json.dumps({"body":outpaint_body}))
+
+    url = request_url + "get_result/"
+    get_result_body = {"request_id":request_id}
+
+    try:
+        result_base64 = get_result_with_retry(url, headers, get_result_body, max_retries=10, retry_interval=3)
+        result_pil = bs64_to_pil(result_base64)
+        result_pil_rgba = rgb_to_rgba(result_pil)
+        img_pil_rgba = rgb_to_rgba(img_pil)
+        mask_pil_rgba = rgb_to_rgba(mask_pil)
+
+        img_pil_rgba = img_pil_rgba.resize(result_pil_rgba.size)
+        mask_pil_rgba = mask_pil_rgba.resize(result_pil_rgba.size)
+
+        gray = mask_pil_rgba.convert("L")
+
+        r, g, b, a = img_pil_rgba.split()
+        product_pil = Image.merge("RGBA", (r, g, b, gray))
+
+        composite_pil = composing_output(result_pil_rgba, product_pil, mask_pil_rgba)
+       
+        if checkbox:
+            return composite_pil, result_pil, gr.Checkbox(label="Outpainting Original Product", visible=True, value=True)
+        return result_pil, composite_pil, gr.Checkbox(label="Outpainting Original Product", visible=True, value=False)
+    except TimeoutError as e:
+        print(f"Failed to get result within retries limit: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
+
+# Function 1-3 Outpainting inpainting
+def outpaint_inpainting_style(img_pil, mask_pil, style_pil, checkbox, text):
+    img_pil = resize512(img_pil)
+    if img_pil.size != mask_pil.size:
+        mask_pil = mask_pil.resize(img_pil.size)
+    img_base64 = pil_to_bs64(img_pil)
+    mask_base64 = pil_to_bs64(mask_pil)
+    style_base64 = pil_to_bs64(style_pil)
+
+    url = request_url + "diffusion/outpaint/inpainting_style/"
+    headers = {'Content-Type': 'application/json'}
+
+    request_id = hashlib.sha256(img_base64.encode()).hexdigest()
+    outpaint_body = {"image_b64":img_base64, "mask_b64":mask_base64, "style_b64":style_base64, "text":text, "request_id":request_id}
+    response = requests.post(url, headers=headers, data=json.dumps({"body":outpaint_body}))
+
+    url = request_url + "get_result/"
+    get_result_body = {"request_id":request_id}
+
+    try:
+        result_base64 = get_result_with_retry(url, headers, get_result_body, max_retries=10, retry_interval=3)
+        result_pil = bs64_to_pil(result_base64)
+        result_pil_rgba = rgb_to_rgba(result_pil)
+        img_pil_rgba = rgb_to_rgba(img_pil)
+        mask_pil_rgba = rgb_to_rgba(mask_pil)
+
+        img_pil_rgba = img_pil_rgba.resize(result_pil_rgba.size)
+        mask_pil_rgba = mask_pil_rgba.resize(result_pil_rgba.size)
+
+        gray = mask_pil_rgba.convert("L")
+
+        r, g, b, a = img_pil_rgba.split()
+        product_pil = Image.merge("RGBA", (r, g, b, gray))
+
+        composite_pil = composing_output(result_pil_rgba, product_pil, mask_pil_rgba)
+       
+        if checkbox:
+            return composite_pil, result_pil, gr.Checkbox(label="Outpainting Original Product", visible=True, value=True)
+        return result_pil, composite_pil, gr.Checkbox(label="Outpainting Original Product", visible=True, value=False)
+    except TimeoutError as e:
+        print(f"Failed to get result within retries limit: {e}")
+    except Exception as e:
+        print(f"An unexpected error occurred: {e}")
 
 # Function 2 Composition
 def composition(img_pil, mask_pil, checkbox):
@@ -387,8 +474,38 @@ with gr.Blocks() as demo:
                     result_pil = gr.Image(type="pil", label="Result", width=width, interactive=False)
                     checkbox = gr.Checkbox(label="Outpainting Original Product", visible=False)
                     substitute = gr.Image(type="pil", label="substitute", visible=False)
-            submit.click(outpaint, [img_pil, mask_pil, checkbox, text], [result_pil, substitute, checkbox])
-            checkbox.select(switch_origin_product, [result_pil, substitute], [result_pil, substitute])
+                submit.click(outpaint, [img_pil, mask_pil, checkbox, text], [result_pil, substitute, checkbox])
+                checkbox.select(switch_origin_product, [result_pil, substitute], [result_pil, substitute])
+
+            gr.Markdown("""# Outpaint inpainting""")
+            with gr.Row():
+                with gr.Column():
+                    img_pil = gr.Image(type="pil", label="Image", width=width)
+                    mask_pil = gr.Image(type="pil", label="Mask", width=width)
+                    text = gr.Textbox(value="")
+                    rate_of_change = gr.Number(label="Rate of change", value=0.8, step=0.1, maximum=1.0, minimum=0.1)
+                    submit = gr.Button(value="Submit", variant="primary")
+                with gr.Column():
+                    result_pil = gr.Image(type="pil", label="Result", width=width, interactive=False)
+                    checkbox = gr.Checkbox(label="Outpainting Original Product", visible=False)
+                    substitute = gr.Image(type="pil", label="substitute", visible=False)
+                submit.click(outpaint_inpainting, [img_pil, mask_pil, checkbox, text, rate_of_change], [result_pil, substitute, checkbox])
+                checkbox.select(switch_origin_product, [result_pil, substitute], [result_pil, substitute])
+
+            gr.Markdown("""# Outpaint inpainting style""")
+            with gr.Row():
+                with gr.Column():
+                    img_pil = gr.Image(type="pil", label="Image", width=width)
+                    mask_pil = gr.Image(type="pil", label="Mask", width=width)
+                    style_pil = gr.Image(type="pil", label="Style", width=width)
+                    text = gr.Textbox(value="")
+                    submit = gr.Button(value="Submit", variant="primary")
+                with gr.Column():
+                    result_pil = gr.Image(type="pil", label="Result", width=width, interactive=False)
+                    checkbox = gr.Checkbox(label="Outpainting Original Product", visible=False)
+                    substitute = gr.Image(type="pil", label="substitute", visible=False)
+                submit.click(outpaint_inpainting_style, [img_pil, mask_pil, style_pil, checkbox, text], [result_pil, substitute, checkbox])
+                checkbox.select(switch_origin_product, [result_pil, substitute], [result_pil, substitute])
 
     with gr.Tab("Composition"):
         with gr.Blocks():
