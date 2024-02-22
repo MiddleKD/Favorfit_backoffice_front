@@ -113,7 +113,7 @@ def get_result_with_retry(url, headers, get_result_body, max_retries=3, retry_in
 
 
 # Function 1 Outpainting
-def outpaint(img_pil, mask_pil, checkbox):
+def outpaint(img_pil, mask_pil, checkbox, text):
     img_pil = resize512(img_pil)
     if img_pil.size != mask_pil.size:
         mask_pil = mask_pil.resize(img_pil.size)
@@ -124,7 +124,7 @@ def outpaint(img_pil, mask_pil, checkbox):
     headers = {'Content-Type': 'application/json'}
 
     request_id = hashlib.sha256(img_base64.encode()).hexdigest()
-    outpaint_body = {"image_b64":img_base64, "mask_b64":mask_base64, "request_id":request_id}
+    outpaint_body = {"image_b64":img_base64, "mask_b64":mask_base64, "text":text, "request_id":request_id}
     response = requests.post(url, headers=headers, data=json.dumps({"body":outpaint_body}))
 
     url = request_url + "get_result/"
@@ -381,12 +381,13 @@ with gr.Blocks() as demo:
                 with gr.Column():
                     img_pil = gr.Image(type="pil", label="Image", width=width)
                     mask_pil = gr.Image(type="pil", label="Mask", width=width)
+                    text = gr.Textbox(value="")
                     submit = gr.Button(value="Submit", variant="primary")
                 with gr.Column():
                     result_pil = gr.Image(type="pil", label="Result", width=width, interactive=False)
                     checkbox = gr.Checkbox(label="Outpainting Original Product", visible=False)
                     substitute = gr.Image(type="pil", label="substitute", visible=False)
-            submit.click(outpaint, [img_pil, mask_pil, checkbox], [result_pil, substitute, checkbox])
+            submit.click(outpaint, [img_pil, mask_pil, checkbox, text], [result_pil, substitute, checkbox])
             checkbox.select(switch_origin_product, [result_pil, substitute], [result_pil, substitute])
 
     with gr.Tab("Composition"):
